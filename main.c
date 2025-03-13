@@ -71,6 +71,19 @@ typedef struct {
     uint16_t dataReadCount;
 } DataUART;
 
+typedef struct {
+    uint16_t rightJoystickX;
+    uint16_t rightJoystickY;
+    uint16_t leftJoystickY;
+    uint16_t leftJoystickX;
+    uint16_t switchA;
+    uint16_t switchB;
+    uint16_t switchC;
+    uint16_t switchD;
+    uint16_t potentiometerVRA;
+    uint16_t potentiometerVRB;
+} UserDataResponse;
+
 static const DataUART EMPTY_DATA_RESET; // Empty UART data packet
 
 DataUART receivedData; // UART Receiver data
@@ -100,7 +113,7 @@ void setupInterrupt(void);
 ////// UART Commands ///// 
 DataUART getPCUInfo(); // 1.3.2. Message 0401h: Get PCU Info Command
 
-DataUART getUserData(uint16_t *rightJoystickX, uint16_t *rightJoystickY, uint16_t *leftJoystickY, uint16_t *leftJoystickX, uint16_t *switchA, uint16_t *switchB, uint16_t *switchC, uint16_t *switchD, uint16_t *potentiometerVRA, uint16_t *potentiometerVRB); // 1.3.4. Message 0501h: Get User Data Command
+UserDataResponse getUserData(); // 1.3.4. Message 0501h: Get User Data Command
 
 void setMotorSettings(DataUART *msg); // 1.3.6. Message 0601h: Set Motor Settings Command
 
@@ -144,19 +157,8 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-                uint16_t rightJoystickX;
-                uint16_t rightJoystickY;
-                uint16_t leftJoystickY;
-                uint16_t leftJoystickX;
-                uint16_t switchA;
-                uint16_t switchB;
-                uint16_t switchC;
-                uint16_t switchD;
-                uint16_t potentiometerVRA;
-                uint16_t potentiometerVRB;
-                
-                DataUART x = getUserData(&rightJoystickX, &rightJoystickY, &leftJoystickY, &leftJoystickX, &switchA, &switchB, &switchC, &switchD, &potentiometerVRA, &potentiometerVRB);
-                DataUART y = x;
+                UserDataResponse x = getUserData();
+                UserDataResponse y = x;
                 
                 btnReleased = 0;
             }
@@ -385,7 +387,11 @@ DataUART getPCUInfo(){
 }
 
 // 1.3.4. Message 0501h: Get User Data Command
-DataUART getUserData(uint16_t *rightJoystickX, uint16_t *rightJoystickY, uint16_t *leftJoystickY, uint16_t *leftJoystickX, uint16_t *switchA, uint16_t *switchB, uint16_t *switchC, uint16_t *switchD, uint16_t *potentiometerVRA, uint16_t *potentiometerVRB){
+UserDataResponse getUserData(){
+    DataUART msgReceived;
+    
+    UserDataResponse userResponseValue;
+    
     receivedData = EMPTY_DATA_RESET;
     
     DataUART msg = {
@@ -406,13 +412,32 @@ DataUART getUserData(uint16_t *rightJoystickX, uint16_t *rightJoystickY, uint16_
     PIE3bits.RCIE = 1;
     
     // Get received data
-    DataUART msgReceived = receivedData;
+    msgReceived = receivedData;
     
-    *rightJoystickX = (msgReceived.payload[1] << 8) | msgReceived.payload[0];
+    // Set user data response
+    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+        userResponseValue.rightJoystickX = (uint16_t) ((msgReceived.payload[1] << 8) | msgReceived.payload[0]);
+
+        userResponseValue.rightJoystickY = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
+
+        userResponseValue.leftJoystickY = (uint16_t) ((msgReceived.payload[5] << 8) | msgReceived.payload[4]);
+
+        userResponseValue.leftJoystickX = (uint16_t) ((msgReceived.payload[7] << 8) | msgReceived.payload[6]);
+
+        userResponseValue.switchA = (uint16_t) ((msgReceived.payload[9] << 8) | msgReceived.payload[8]);
+
+        userResponseValue.switchB = (uint16_t) ((msgReceived.payload[11] << 8) | msgReceived.payload[10]);
+
+        userResponseValue.switchC = (uint16_t) ((msgReceived.payload[13] << 8) | msgReceived.payload[12]);
+
+        userResponseValue.switchD = (uint16_t) ((msgReceived.payload[15] << 8) | msgReceived.payload[14]);
+
+        userResponseValue.potentiometerVRA = (uint16_t) ((msgReceived.payload[17] << 8) | msgReceived.payload[16]);
+
+        userResponseValue.potentiometerVRB = (uint16_t) ((msgReceived.payload[19] << 8) | msgReceived.payload[18]);
+        }
     
-    *switchA = (msgReceived.payload[9] << 8) | msgReceived.payload[8];
-    
-    return receivedData;
+    return userResponseValue;
 }
 
 // 1.3.6. Message 0601h: Set Motor Settings Command
