@@ -47,6 +47,7 @@
 
 #include <xc.h>
 #include <stdint.h>
+#include "movement.h"
 
 #define _XTAL_FREQ 32000000
 
