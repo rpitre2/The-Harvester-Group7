@@ -76,6 +76,27 @@ typedef struct {
     uint16_t dataReadCount;
 } DataUART;
 
+typedef struct {
+    uint8_t teamID;
+    uint8_t playerID;
+    uint16_t overallHealth;
+    uint8_t shieldCodeFlag;
+    uint8_t repairCodeFlag;
+} PCUInfo;
+
+typedef struct {
+    uint16_t rightJoystickX;
+    uint16_t rightJoystickY;
+    uint16_t leftJoystickY;
+    uint16_t leftJoystickX;
+    uint16_t switchA;
+    uint16_t switchB;
+    uint16_t switchC;
+    uint16_t switchD;
+    uint16_t potentiometerVRA;
+    uint16_t potentiometerVRB;
+} UserDataResponse;
+
 static const DataUART EMPTY_DATA_RESET; // Empty UART data packet
 
 DataUART receivedData; // UART Receiver data
@@ -85,8 +106,6 @@ uint8_t txBuffer[TX_BUFFER_SIZE]; // Transmission buffer
 uint8_t txHead = 0; // Index for adding data
 uint8_t txTail = 0; // Index for transmitting data
 uint8_t txCount = 0; // Number of bytes in the buffer
-
-uint8_t solarArrayBlockEnabled = 0;
 
 void __interrupt() interruptReceiver(void);
 
@@ -105,11 +124,11 @@ void setupInterrupt(void);
 DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount);
 
 ////// UART Commands ///// 
-DataUART getPCUInfo(); // 1.3.2. Message 0401h: Get PCU Info Command
+PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
-DataUART getUserData(); // 1.3.4. Message 0501h: Get User Data Command
+UserDataResponse getUserData(void); // 1.3.4. Message 0501h: Get User Data Command
 
-void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM); // 1.3.6. Message 0601h: Set Motor Settings Command
+void setMotorSettings(DataUART *msg); // 1.3.6. Message 0601h: Set Motor Settings Command
 
 void setServoPulses(DataUART *msg); // 1.3.7. Message 0701h: Set Servo Pulses Command
 
@@ -117,20 +136,23 @@ void setLaserScope(DataUART *msg); // 1.3.8. Message 0801h: Set Laser Scope Comm
 
 void shootLaserDamage(enum ShotType shotType); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
 
-void shootLaserTurretShieldCode(DataUART *msg); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
+void shootLaserTurretShieldCode(); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 
-void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
+void shootLaserRequestRepairCode(); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
 
-void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
+void shootLaserTransmitRepairCode(); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
 void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+
 ////// UART Commands /////
 
-///// Solar Array /////
-void setupSolarArrayBlock();
+/////////////////////////////// Solar Array ////////////////////
+void setupSolarArrayBlock(void);
 
-void toggleSolarArrayBlock();
-///// Solar Array /////
+void enableSolarArrayBlock(void);
+
+void disableSolarArrayBlock(void);
+/////////////////////////////// Solar Array ////////////////////
 
 void main(void) {
     initializeUARTBaud115200();
@@ -143,6 +165,8 @@ void main(void) {
     
     setupInterrupt();
     
+    setupSolarArrayBlock();
+    
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
     ANSELAbits.ANSA5 = 0;
@@ -151,10 +175,19 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-//                DataUART x = getPCUInfo();
-//                DataUART y = x;
+                PCUInfo x = getPCUInfo();
+                PCUInfo y = x;
                 
-                shootLaserDamage(HIGH_CALIBER);
+                UserDataResponse a = getUserData();
+                UserDataResponse b = a;
+                
+                // Enable Solar Array Block
+                if (a.switchB == 0x03E8) {
+                    enableSolarArrayBlock();
+                }
+                else {
+                    disableSolarArrayBlock();
+                }
                 
                 btnReleased = 0;
             }
@@ -287,13 +320,13 @@ void setupUART(void) {
 // Setup UART receiver
 void setupReceiverUART(void) {
     // Set RX pin as Digital
-    ANSELCbits.ANSC6 = 0;
+    ANSELCbits.ANSC5 = 0;
     
     // Configure RX/DT I/O pin as input
-    TRISCbits.TRISC6 = 1;
+    TRISCbits.TRISC5 = 1;
     
-    // Configure to set receiver input to pin RC6
-    RXPPS = 0x16;
+    // Configure to set receiver input to pin RC5
+    RXPPS = 0x15;
     
     // Enable Receiver
     RC1STAbits.CREN = 1;
@@ -302,13 +335,13 @@ void setupReceiverUART(void) {
 // Setup UART transmitter
 void setupTransmitterUART(void) {
     // Set TX pin as Digital
-    ANSELCbits.ANSC5 = 0;
+    ANSELCbits.ANSC6 = 0;
     
     // Configure TX I/O pin as output
-    TRISCbits.TRISC5 = 0;
+    TRISCbits.TRISC6 = 0;
     
-    // Configure to set transmitter output to pin RC5
-    RC5PPS = 0x10;
+    // Configure to set transmitter output to pin RC6
+    RC6PPS = 0x10;
     
     // Enabling Transmitter
     TX1STAbits.TXEN = 1;
@@ -371,7 +404,11 @@ DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16
 
 /////// Commands ////////////
 // 1.3.2. Message 0401h: Get PCU Info Command
-DataUART getPCUInfo(){
+PCUInfo getPCUInfo(){
+    DataUART msgReceived;
+    
+    PCUInfo userResponseValue;
+    
     receivedData = EMPTY_DATA_RESET;
     
     DataUART msg = {
@@ -391,11 +428,31 @@ DataUART getPCUInfo(){
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
     
-    return receivedData;
+    // Get received data
+    msgReceived = receivedData;
+    
+    // Set user data response
+    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+        userResponseValue.teamID = msgReceived.payload[0];
+
+        userResponseValue.playerID = msgReceived.payload[1];
+
+        userResponseValue.overallHealth = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
+
+        userResponseValue.shieldCodeFlag = msgReceived.payload[4];
+
+        userResponseValue.repairCodeFlag = msgReceived.payload[5];
+    }
+    
+    return userResponseValue;
 }
 
 // 1.3.4. Message 0501h: Get User Data Command
-DataUART getUserData(){
+UserDataResponse getUserData(){
+    DataUART msgReceived;
+    
+    UserDataResponse userResponseValue;
+    
     receivedData = EMPTY_DATA_RESET;
     
     DataUART msg = {
@@ -415,31 +472,39 @@ DataUART getUserData(){
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
     
-    return receivedData;
+    // Get received data
+    msgReceived = receivedData;
+    
+    // Set user data response
+    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+        userResponseValue.rightJoystickX = (uint16_t) ((msgReceived.payload[1] << 8) | msgReceived.payload[0]);
+
+        userResponseValue.rightJoystickY = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
+
+        userResponseValue.leftJoystickY = (uint16_t) ((msgReceived.payload[5] << 8) | msgReceived.payload[4]);
+
+        userResponseValue.leftJoystickX = (uint16_t) ((msgReceived.payload[7] << 8) | msgReceived.payload[6]);
+
+        userResponseValue.switchA = (uint16_t) ((msgReceived.payload[9] << 8) | msgReceived.payload[8]);
+
+        userResponseValue.switchB = (uint16_t) ((msgReceived.payload[11] << 8) | msgReceived.payload[10]);
+
+        userResponseValue.switchC = (uint16_t) ((msgReceived.payload[13] << 8) | msgReceived.payload[12]);
+
+        userResponseValue.switchD = (uint16_t) ((msgReceived.payload[15] << 8) | msgReceived.payload[14]);
+
+        userResponseValue.potentiometerVRA = (uint16_t) ((msgReceived.payload[17] << 8) | msgReceived.payload[16]);
+
+        userResponseValue.potentiometerVRB = (uint16_t) ((msgReceived.payload[19] << 8) | msgReceived.payload[18]);
+    }
+    
+    return userResponseValue;
 }
 
-//// 1.3.6. Message 0601h: Set Motor Settings Command
-//void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
-//    UARTMessage* msg = (UARTMessage*) malloc(sizeof(UARTMessage));
-//    msg->sync[0] = 0xFE;       // Sync Byte 1
-//    msg->sync[1] = 0x19;       // Sync Byte 2
-//    msg->msgID[0] = 0x01;      // Msg ID LSB (01h)
-//    msg->msgID[1] = 0x06;      // Msg ID MSB (06h)
-//    msg->payloadSize[0] = 0x04; // Payload size LSB (04h)
-//    msg->payloadSize[1] = 0x00; // Payload size MSB (00h)
-//    
-//    // Allocate space for payload and fill it with motor settings
-//    msg->payload = (uint8_t*) malloc(4 * sizeof(uint8_t));
-//    msg->payload[0] = motorADirection;  // Motor A Direction 0 = brake, 1 = forward, 2 = reverse
-//    msg->payload[1] = motorAPWM;        // Motor A PWM (0-100)
-//    msg->payload[2] = motorBDirection;  // Motor B Direction 
-//    msg->payload[3] = motorBPWM;        // Motor B PWM (0-100)
-//    
-//    sendUARTMessage(msg);
-//    
-//    free(msg->payload);
-//    free(msg);
-//}
+// 1.3.6. Message 0601h: Set Motor Settings Command
+void setMotorSettings(DataUART *msg){
+    
+}
 
 // 1.3.7. Message 0701h: Set Servo Pulses Command
 void setServoPulses(DataUART *msg){
@@ -461,34 +526,37 @@ void shootLaserDamage(enum ShotType shotType){
 }
 
 // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
-void shootLaserTurretShieldCode(DataUART *msg){
+void shootLaserTurretShieldCode(){
+    DataUART* msg = createUARTMessage(0, 0x0209, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
-void shootLaserRequestRepairCode(DataUART *msg){
+void shootLaserRequestRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0309, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
-void shootLaserTransmitRepairCode(DataUART *msg){
+void shootLaserTransmitRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0409, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 void processingPlantOreType(enum Ore oreValue){
     receivedData = EMPTY_DATA_RESET;
     
-    DataUART msg = {
-                    .isStartCommunication = 0,
-                    .sync = {0xFE, 0x19},
-                    .msgID = 0x0A03,
-                    .payloadSize = 0x0001,
-                    .payload = &oreValue,
-                    .dataReadCount = 0
-    };
+    DataUART* msg = createUARTMessage(0, 0x0A03, 0x0001, &oreValue, 0);
     
-    sendUARTMessage(&msg);
+    sendUARTMessage(msg);
+    free(msg);
 }
 /////// Commands ////////////
 /////////////////////////////// UART ///////////////////////
@@ -503,9 +571,13 @@ void setupSolarArrayBlock() {
     return;
 }
 
-void toggleSolarArrayBlock() {
-    solarArrayBlockEnabled = !solarArrayBlockEnabled;
-    PORTBbits.RB0 = solarArrayBlockEnabled;
+void enableSolarArrayBlock(void) {
+    PORTBbits.RB0 = 1;
+    return;
+}
+
+void disableSolarArrayBlock(void) {
+    PORTBbits.RB0 = 0;
     return;
 }
 /////////////////////////////// Solar Array ////////////////////
