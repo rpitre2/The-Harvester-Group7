@@ -2,6 +2,6 @@
 #define MOVEMENT_H
 
 #include <stdint.h>
-void movementControl(int y_stick, int x_stick);
+void movementControl(uint16_t y_stick, uint16_t x_stick);
 
 #endif
