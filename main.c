@@ -47,10 +47,13 @@
 
 #include <xc.h>
 #include <stdint.h>
+#include "optical_signal.h"
 
 #define _XTAL_FREQ 32000000
-
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
+#define VALUE_2000 0x7D0
+#define VALUE_1500 0x5DC
+#define VALUE_1000 0x3E8
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
 
@@ -108,6 +111,8 @@ void sendUARTMessage(DataUART *msg);
 
 void setupInterrupt(void);
 
+void setupOpticalSignalDecoding(void);
+
 ////// UART Commands ///// 
 PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
@@ -149,7 +154,11 @@ void main(void) {
     
     setupInterrupt();
     
+<<<<<<< Updated upstream
     setupSolarArrayBlock();
+=======
+//    setupOpticalSignalDecoding();
+>>>>>>> Stashed changes
     
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
@@ -171,6 +180,16 @@ void main(void) {
                 }
                 else {
                     disableSolarArrayBlock();
+                }
+                
+                if(x.switchC == VALUE_2000) // Optical Signal Decoding (2000 = On)
+                {
+                    LATAbits.LATA0 = 1;
+                    OSD_Read_Colours();
+                }
+                else 
+                {
+                    LATAbits.LATA0 = 0;
                 }
                 
                 btnReleased = 0;
@@ -268,6 +287,31 @@ void __interrupt() mainISR(void) {
             }
         }
     }
+}
+
+void setupOpticalSignalDecoding(void)
+{
+    // Set LED pins as outputs
+    TRISAbits.TRISA0 = 0;
+    TRISAbits.TRISA1 = 0;
+    TRISAbits.TRISA2 = 0;
+    TRISAbits.TRISA3 = 0;
+    
+    // Set LED pins to digital
+    ANSELAbits.ANSA0 = 0;
+    ANSELAbits.ANSA1 = 0;
+    ANSELAbits.ANSA2 = 0;
+    ANSELAbits.ANSA3 = 0;
+    
+    // Clear LED LATs
+    LATAbits.LATA0 = 0;
+    LATAbits.LATA1 = 0;
+    LATAbits.LATA2 = 0;
+    LATAbits.LATA3 = 0;
+    
+    // APDS-9960 Setup
+    I2C_Init();
+    ColourSensor_Enable();
 }
 
 // Enable Interrupts

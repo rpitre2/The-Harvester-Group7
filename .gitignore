@@ -2,3 +2,5 @@
 
 # Ignore build directories
 build/
+dist/
+nbproject/
