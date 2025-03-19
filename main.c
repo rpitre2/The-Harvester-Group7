@@ -51,6 +51,7 @@
 
 #define _XTAL_FREQ 32000000
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
+#define MAX_PAYLOAD_SIZE 20
 #define VALUE_2000 0x7D0
 #define VALUE_1500 0x5DC
 #define VALUE_1000 0x3E8
@@ -62,7 +63,7 @@ typedef struct {
     uint8_t sync[2];
     uint16_t msgID;
     uint16_t payloadSize;
-    uint8_t* payload;
+    uint8_t payload[MAX_PAYLOAD_SIZE];
     uint16_t dataReadCount;
 } DataUART;
 
@@ -154,11 +155,8 @@ void main(void) {
     
     setupInterrupt();
     
-<<<<<<< Updated upstream
     setupSolarArrayBlock();
-=======
-//    setupOpticalSignalDecoding();
->>>>>>> Stashed changes
+    setupOpticalSignalDecoding();
     
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
@@ -170,15 +168,15 @@ void main(void) {
             if (btnReleased) {
                 
                 
-                if(x.switchC == VALUE_2000) // Optical Signal Decoding (2000 = On)
-                {
-                    LATAbits.LATA0 = 1;
-                    OSD_Read_Colours();
-                }
-                else 
-                {
-                    LATAbits.LATA0 = 0;
-                }
+//                if(x.switchC == VALUE_2000) // Optical Signal Decoding (2000 = On)
+//                {
+//                    LATAbits.LATA0 = 1;
+//                    OSD_Read_Colours();
+//                }
+//                else 
+//                {
+//                    LATAbits.LATA0 = 0;
+//                }
                 
                 btnReleased = 0;
             }
@@ -196,9 +194,11 @@ void main(void) {
         
         // Enable Solar Array Block
         if (a.switchB == 0x03E8) {
+            LATAbits.LATA0 = 1;
             enableSolarArrayBlock();
         }
         else {
+            LATAbits.LATA0 = 0;
             disableSolarArrayBlock();
         }
     }
@@ -264,7 +264,7 @@ void __interrupt() mainISR(void) {
                     case 3: // MSB of payload size
                         receivedData.payloadSize |= ((uint16_t)data << 8);
                         if (receivedData.payloadSize > 0) {
-                            receivedData.payload = (uint8_t*)malloc(receivedData.payloadSize);
+//                            receivedData.payload = (uint8_t*)malloc(receivedData.payloadSize);
                             if (!receivedData.payload) {
                                 // Handle memory allocation failure
                                 receivedData.isStartCommunication = 0; // Reset communication
@@ -313,8 +313,8 @@ void setupOpticalSignalDecoding(void)
     LATAbits.LATA3 = 0;
     
     // APDS-9960 Setup
-    I2C_Init();
-    ColourSensor_Enable();
+//    I2C_Init();
+//    ColourSensor_Enable();
 }
 
 // Enable Interrupts
@@ -435,7 +435,7 @@ PCUInfo getPCUInfo(){
                     .sync = {0xFE, 0x19},
                     .msgID = 0x0401,
                     .payloadSize = 0x0000,
-                    .payload = NULL,
+//                    .payload = NULL,
                     .dataReadCount = 0
     };
     
@@ -443,6 +443,7 @@ PCUInfo getPCUInfo(){
     
     // Wait until received data is ready
     while (PIE3bits.RCIE);
+//    __delay_ms(10);
     
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
@@ -451,7 +452,7 @@ PCUInfo getPCUInfo(){
     msgReceived = receivedData;
     
     // Set user data response
-    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+    if (msgReceived.payloadSize == 20) { //msgReceived.payload != NULL && 
         userResponseValue.teamID = msgReceived.payload[0];
 
         userResponseValue.playerID = msgReceived.payload[1];
@@ -479,7 +480,7 @@ UserDataResponse getUserData(){
                     .sync = {0xFE, 0x19},
                     .msgID = 0x0501,
                     .payloadSize = 0x0000,
-                    .payload = NULL,
+//                    .payload = NULL,
                     .dataReadCount = 0
     };
     
@@ -487,6 +488,7 @@ UserDataResponse getUserData(){
     
     // Wait until received data is ready
     while (PIE3bits.RCIE);
+//    __delay_ms(10);
     
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
@@ -495,7 +497,7 @@ UserDataResponse getUserData(){
     msgReceived = receivedData;
     
     // Set user data response
-    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+    if (msgReceived.payloadSize == 20) { //msgReceived.payload != NULL && 
         userResponseValue.rightJoystickX = (uint16_t) ((msgReceived.payload[1] << 8) | msgReceived.payload[0]);
 
         userResponseValue.rightJoystickY = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
