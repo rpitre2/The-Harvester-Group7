@@ -589,7 +589,7 @@ void shootLaserDamage(){
 
 // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 void shootLaserTurretShieldCode(){
-    DataUART* msg = createUARTMessage(0, 0x0209, 0x0000, NULL, 0);
+    DataUART* msg = createUARTMessage(0, 0x0902, 0x0000, NULL, 0);
     
     sendUARTMessage(msg);
     free(msg);
@@ -597,7 +597,7 @@ void shootLaserTurretShieldCode(){
 
 // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
 void shootLaserRequestRepairCode(){
-    DataUART* msg = createUARTMessage(0, 0x0309, 0x0000, NULL, 0);
+    DataUART* msg = createUARTMessage(0, 0x0903, 0x0000, NULL, 0);
     
     sendUARTMessage(msg);
     free(msg);
@@ -605,7 +605,7 @@ void shootLaserRequestRepairCode(){
 
 // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 void shootLaserTransmitRepairCode(){
-    DataUART* msg = createUARTMessage(0, 0x0409, 0x0000, NULL, 0);
+    DataUART* msg = createUARTMessage(0, 0x0904, 0x0000, NULL, 0);
     
     sendUARTMessage(msg);
     free(msg);
