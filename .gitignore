@@ -1,2 +1,11 @@
+<<<<<<< HEAD
 /build/
 /dist/
+=======
+# .gitignore
+
+# Ignore build directories
+build/
+dist/
+nbproject/
+>>>>>>> Milestone4DemoApp

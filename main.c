@@ -47,10 +47,14 @@
 
 #include <xc.h>
 #include <stdint.h>
+#include "optical_signal.h"
 
 #define _XTAL_FREQ 32000000
-
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
+#define MAX_PAYLOAD_SIZE 20
+#define VALUE_2000 0x7D0
+#define VALUE_1500 0x5DC
+#define VALUE_1000 0x3E8
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
 
@@ -60,11 +64,6 @@ enum Ore {
     COBALTITE = 3, // Blue
     SOLARIUM = 4, // Red and Yellow
     AUROTITE = 5 // Blue and Yellow
-};
-
-enum ShotType {
-    LOW_CALIBER = 1,
-    HIGH_CALIBER = 2
 };
 
 typedef struct {
@@ -123,6 +122,8 @@ void setupInterrupt(void);
 
 DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount);
 
+void setupOpticalSignalDecoding(void);
+
 ////// UART Commands ///// 
 PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
@@ -134,7 +135,7 @@ void setServoPulses(DataUART *msg); // 1.3.7. Message 0701h: Set Servo Pulses Co
 
 void setLaserScope(DataUART *msg); // 1.3.8. Message 0801h: Set Laser Scope Command
 
-void shootLaserDamage(enum ShotType shotType); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
+void shootLaserDamage(); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
 
 void shootLaserTurretShieldCode(); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 
@@ -166,6 +167,7 @@ void main(void) {
     setupInterrupt();
     
     setupSolarArrayBlock();
+    setupOpticalSignalDecoding();
     
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
@@ -175,25 +177,55 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-                PCUInfo x = getPCUInfo();
-                PCUInfo y = x;
                 
-                UserDataResponse a = getUserData();
-                UserDataResponse b = a;
                 
-                // Enable Solar Array Block
-                if (a.switchB == 0x03E8) {
-                    enableSolarArrayBlock();
-                }
-                else {
-                    disableSolarArrayBlock();
-                }
+//                if(x.switchC == VALUE_2000) // Optical Signal Decoding (2000 = On)
+//                {
+//                    LATAbits.LATA0 = 1;
+//                    OSD_Read_Colours();
+//                }
+//                else 
+//                {
+//                    LATAbits.LATA0 = 0;
+//                }
+                
                 
                 btnReleased = 0;
             }
         }
         else {
             btnReleased = 1;
+        }
+        
+        
+        PCUInfo x = getPCUInfo();
+        PCUInfo y = x;
+        
+        UserDataResponse a = getUserData();
+        UserDataResponse b = a;
+        
+        // Enable Solar Array Block
+        if (a.switchB == 0x03E8) {
+            LATAbits.LATA0 = 1;
+            enableSolarArrayBlock();
+        }
+        else {
+            LATAbits.LATA0 = 0;
+            disableSolarArrayBlock();
+        }
+        
+        if (a.switchD == 2000) {
+            if (a.potentiometerVRB >= 1000 && a.potentiometerVRB <= 1199) {
+                processingPlantOreType(SOLAR_FLARE);
+            } else if (a.potentiometerVRB >= 1200 && a.potentiometerVRB <= 1399) {
+                processingPlantOreType(AURORIUM);
+            } else if (a.potentiometerVRB >= 1400 && a.potentiometerVRB <= 1599) {
+                processingPlantOreType(COBALTITE);
+            } else if (a.potentiometerVRB >= 1600 && a.potentiometerVRB <= 1799) {
+                processingPlantOreType(SOLARIUM);
+            } else if (a.potentiometerVRB >= 1800) {
+                processingPlantOreType(AUROTITE);
+            }
         }
     }
     
@@ -258,7 +290,7 @@ void __interrupt() mainISR(void) {
                     case 3: // MSB of payload size
                         receivedData.payloadSize |= ((uint16_t)data << 8);
                         if (receivedData.payloadSize > 0) {
-                            receivedData.payload = (uint8_t*)malloc(receivedData.payloadSize);
+//                            receivedData.payload = (uint8_t*)malloc(receivedData.payloadSize);
                             if (!receivedData.payload) {
                                 // Handle memory allocation failure
                                 receivedData.isStartCommunication = 0; // Reset communication
@@ -284,6 +316,31 @@ void __interrupt() mainISR(void) {
             }
         }
     }
+}
+
+void setupOpticalSignalDecoding(void)
+{
+    // Set LED pins as outputs
+    TRISAbits.TRISA0 = 0;
+    TRISAbits.TRISA1 = 0;
+    TRISAbits.TRISA2 = 0;
+    TRISAbits.TRISA3 = 0;
+    
+    // Set LED pins to digital
+    ANSELAbits.ANSA0 = 0;
+    ANSELAbits.ANSA1 = 0;
+    ANSELAbits.ANSA2 = 0;
+    ANSELAbits.ANSA3 = 0;
+    
+    // Clear LED LATs
+    LATAbits.LATA0 = 0;
+    LATAbits.LATA1 = 0;
+    LATAbits.LATA2 = 0;
+    LATAbits.LATA3 = 0;
+    
+    // APDS-9960 Setup
+//    I2C_Init();
+//    ColourSensor_Enable();
 }
 
 // Enable Interrupts
@@ -320,13 +377,13 @@ void setupUART(void) {
 // Setup UART receiver
 void setupReceiverUART(void) {
     // Set RX pin as Digital
-    ANSELCbits.ANSC5 = 0;
+    ANSELCbits.ANSC6 = 0;
     
     // Configure RX/DT I/O pin as input
-    TRISCbits.TRISC5 = 1;
+    TRISCbits.TRISC6 = 1;
     
-    // Configure to set receiver input to pin RC5
-    RXPPS = 0x15;
+    // Configure to set receiver input to pin RC6
+    RXPPS = 0x16;
     
     // Enable Receiver
     RC1STAbits.CREN = 1;
@@ -335,13 +392,13 @@ void setupReceiverUART(void) {
 // Setup UART transmitter
 void setupTransmitterUART(void) {
     // Set TX pin as Digital
-    ANSELCbits.ANSC6 = 0;
+    ANSELCbits.ANSC5 = 0;
     
     // Configure TX I/O pin as output
-    TRISCbits.TRISC6 = 0;
+    TRISCbits.TRISC5 = 0;
     
-    // Configure to set transmitter output to pin RC6
-    RC6PPS = 0x10;
+    // Configure to set transmitter output to pin RC5
+    RC5PPS = 0x10;
     
     // Enabling Transmitter
     TX1STAbits.TXEN = 1;
@@ -390,7 +447,7 @@ void sendUARTMessage(DataUART *msg) {
     PIE3bits.TXIE = 1;
 }
 
-DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount) {
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount) {
     DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
     msg->isStartCommunication = isStartCommunication;
     msg->sync[0] = 0xFE;
@@ -416,7 +473,7 @@ PCUInfo getPCUInfo(){
                     .sync = {0xFE, 0x19},
                     .msgID = 0x0401,
                     .payloadSize = 0x0000,
-                    .payload = NULL,
+//                    .payload = NULL,
                     .dataReadCount = 0
     };
     
@@ -424,6 +481,7 @@ PCUInfo getPCUInfo(){
     
     // Wait until received data is ready
     while (PIE3bits.RCIE);
+//    __delay_ms(10);
     
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
@@ -432,7 +490,7 @@ PCUInfo getPCUInfo(){
     msgReceived = receivedData;
     
     // Set user data response
-    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+    if (msgReceived.payloadSize == 20) { //msgReceived.payload != NULL && 
         userResponseValue.teamID = msgReceived.payload[0];
 
         userResponseValue.playerID = msgReceived.payload[1];
@@ -460,7 +518,7 @@ UserDataResponse getUserData(){
                     .sync = {0xFE, 0x19},
                     .msgID = 0x0501,
                     .payloadSize = 0x0000,
-                    .payload = NULL,
+//                    .payload = NULL,
                     .dataReadCount = 0
     };
     
@@ -468,6 +526,7 @@ UserDataResponse getUserData(){
     
     // Wait until received data is ready
     while (PIE3bits.RCIE);
+//    __delay_ms(10);
     
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
@@ -476,7 +535,7 @@ UserDataResponse getUserData(){
     msgReceived = receivedData;
     
     // Set user data response
-    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+    if (msgReceived.payloadSize == 20) { //msgReceived.payload != NULL && 
         userResponseValue.rightJoystickX = (uint16_t) ((msgReceived.payload[1] << 8) | msgReceived.payload[0]);
 
         userResponseValue.rightJoystickY = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
@@ -518,7 +577,8 @@ void setLaserScope(DataUART *msg){
 }
 
 // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
-void shootLaserDamage(enum ShotType shotType){
+void shootLaserDamage(){
+    uint8_t shotType = 0x2;
     DataUART* msg = createUARTMessage(0, 0x0901, 0x0001, &shotType, 0);
     
     sendUARTMessage(msg);
@@ -551,8 +611,6 @@ void shootLaserTransmitRepairCode(){
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 void processingPlantOreType(enum Ore oreValue){
-    receivedData = EMPTY_DATA_RESET;
-    
     DataUART* msg = createUARTMessage(0, 0x0A03, 0x0001, &oreValue, 0);
     
     sendUARTMessage(msg);
