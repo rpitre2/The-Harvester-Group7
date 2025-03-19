@@ -54,14 +54,6 @@
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
 
-enum Ore {
-    SOLAR_FLARE = 1, // Red
-    AURORIUM = 2, // Yellow
-    COBALTITE = 3, // Blue
-    SOLARIUM = 4, // Red and Yellow
-    AUROTITE = 5 // Blue and Yellow
-};
-
 typedef struct {
     uint8_t isStartCommunication;
     uint8_t sync[2];
@@ -70,6 +62,14 @@ typedef struct {
     uint8_t* payload;
     uint16_t dataReadCount;
 } DataUART;
+
+typedef struct {
+    uint8_t teamID;
+    uint8_t playerID;
+    uint16_t overallHealth;
+    uint8_t shieldCodeFlag;
+    uint8_t repairCodeFlag;
+} PCUInfo;
 
 typedef struct {
     uint16_t rightJoystickX;
@@ -94,8 +94,6 @@ uint8_t txHead = 0; // Index for adding data
 uint8_t txTail = 0; // Index for transmitting data
 uint8_t txCount = 0; // Number of bytes in the buffer
 
-uint8_t solarArrayBlockEnabled = 0;
-
 void __interrupt() interruptReceiver(void);
 
 void initializeUARTBaud115200(void);
@@ -111,9 +109,9 @@ void sendUARTMessage(DataUART *msg);
 void setupInterrupt(void);
 
 ////// UART Commands ///// 
-DataUART getPCUInfo(); // 1.3.2. Message 0401h: Get PCU Info Command
+PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
-UserDataResponse getUserData(); // 1.3.4. Message 0501h: Get User Data Command
+UserDataResponse getUserData(void); // 1.3.4. Message 0501h: Get User Data Command
 
 void setMotorSettings(DataUART *msg); // 1.3.6. Message 0601h: Set Motor Settings Command
 
@@ -129,14 +127,16 @@ void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot
 
 void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
-void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+void processingPlantOreType(DataUART *msg); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 ////// UART Commands /////
 
-///// Solar Array /////
-void setupSolarArrayBlock();
+/////////////////////////////// Solar Array ////////////////////
+void setupSolarArrayBlock(void);
 
-void toggleSolarArrayBlock();
-///// Solar Array /////
+void enableSolarArrayBlock(void);
+
+void disableSolarArrayBlock(void);
+/////////////////////////////// Solar Array ////////////////////
 
 void main(void) {
     initializeUARTBaud115200();
@@ -149,6 +149,8 @@ void main(void) {
     
     setupInterrupt();
     
+    setupSolarArrayBlock();
+    
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
     ANSELAbits.ANSA5 = 0;
@@ -157,8 +159,19 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-                UserDataResponse x = getUserData();
-                UserDataResponse y = x;
+                PCUInfo x = getPCUInfo();
+                PCUInfo y = x;
+                
+                UserDataResponse a = getUserData();
+                UserDataResponse b = a;
+                
+                // Enable Solar Array Block
+                if (a.switchB == 0x03E8) {
+                    enableSolarArrayBlock();
+                }
+                else {
+                    disableSolarArrayBlock();
+                }
                 
                 btnReleased = 0;
             }
@@ -291,13 +304,13 @@ void setupUART(void) {
 // Setup UART receiver
 void setupReceiverUART(void) {
     // Set RX pin as Digital
-    ANSELCbits.ANSC6 = 0;
+    ANSELCbits.ANSC5 = 0;
     
     // Configure RX/DT I/O pin as input
-    TRISCbits.TRISC6 = 1;
+    TRISCbits.TRISC5 = 1;
     
-    // Configure to set receiver input to pin RC6
-    RXPPS = 0x16;
+    // Configure to set receiver input to pin RC5
+    RXPPS = 0x15;
     
     // Enable Receiver
     RC1STAbits.CREN = 1;
@@ -306,13 +319,13 @@ void setupReceiverUART(void) {
 // Setup UART transmitter
 void setupTransmitterUART(void) {
     // Set TX pin as Digital
-    ANSELCbits.ANSC5 = 0;
+    ANSELCbits.ANSC6 = 0;
     
     // Configure TX I/O pin as output
-    TRISCbits.TRISC5 = 0;
+    TRISCbits.TRISC6 = 0;
     
-    // Configure to set transmitter output to pin RC5
-    RC5PPS = 0x10;
+    // Configure to set transmitter output to pin RC6
+    RC6PPS = 0x10;
     
     // Enabling Transmitter
     TX1STAbits.TXEN = 1;
@@ -363,7 +376,11 @@ void sendUARTMessage(DataUART *msg) {
 
 /////// Commands ////////////
 // 1.3.2. Message 0401h: Get PCU Info Command
-DataUART getPCUInfo(){
+PCUInfo getPCUInfo(){
+    DataUART msgReceived;
+    
+    PCUInfo userResponseValue;
+    
     receivedData = EMPTY_DATA_RESET;
     
     DataUART msg = {
@@ -383,7 +400,23 @@ DataUART getPCUInfo(){
     // Re-enable receiver interrupt
     PIE3bits.RCIE = 1;
     
-    return receivedData;
+    // Get received data
+    msgReceived = receivedData;
+    
+    // Set user data response
+    if (msgReceived.payload != NULL && msgReceived.payloadSize == 20) {
+        userResponseValue.teamID = msgReceived.payload[0];
+
+        userResponseValue.playerID = msgReceived.payload[1];
+
+        userResponseValue.overallHealth = (uint16_t) ((msgReceived.payload[3] << 8) | msgReceived.payload[2]);
+
+        userResponseValue.shieldCodeFlag = msgReceived.payload[4];
+
+        userResponseValue.repairCodeFlag = msgReceived.payload[5];
+    }
+    
+    return userResponseValue;
 }
 
 // 1.3.4. Message 0501h: Get User Data Command
@@ -435,7 +468,7 @@ UserDataResponse getUserData(){
         userResponseValue.potentiometerVRA = (uint16_t) ((msgReceived.payload[17] << 8) | msgReceived.payload[16]);
 
         userResponseValue.potentiometerVRB = (uint16_t) ((msgReceived.payload[19] << 8) | msgReceived.payload[18]);
-        }
+    }
     
     return userResponseValue;
 }
@@ -476,19 +509,8 @@ void shootLaserTransmitRepairCode(DataUART *msg){
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
-void processingPlantOreType(enum Ore oreValue){
-    receivedData = EMPTY_DATA_RESET;
+void processingPlantOreType(DataUART *msg){
     
-    //DataUART msg = {
-    ///                .isStartCommunication = 0,
-    //                .sync = {0xFE, 0x19},
-    //                .msgID = 0x0A03,
-    //                .payloadSize = 0x0001,
-    //                .payload = oreValue,
-    //                .dataReadCount = 0
-    //};
-    
-    //sendUARTMessage(&msg);
 }
 /////// Commands ////////////
 /////////////////////////////// UART ///////////////////////
@@ -503,9 +525,13 @@ void setupSolarArrayBlock() {
     return;
 }
 
-void toggleSolarArrayBlock() {
-    solarArrayBlockEnabled = !solarArrayBlockEnabled;
-    PORTBbits.RB0 = solarArrayBlockEnabled;
+void enableSolarArrayBlock(void) {
+    PORTBbits.RB0 = 1;
+    return;
+}
+
+void disableSolarArrayBlock(void) {
+    PORTBbits.RB0 = 0;
     return;
 }
 /////////////////////////////// Solar Array ////////////////////
