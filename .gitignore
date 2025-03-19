@@ -1,0 +1,4 @@
+# .gitignore
+
+# Ignore build directories
+build/
