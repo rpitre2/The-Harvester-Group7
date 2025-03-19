@@ -528,26 +528,37 @@ UserDataResponse getUserData(){
 
 // I am going to fix how this is called after the demo
 void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
-    UARTMessage* msg = (UARTMessage*) malloc(sizeof(UARTMessage));
-    msg->sync[0] = 0xFE;       // Sync Byte 1
-    msg->sync[1] = 0x19;       // Sync Byte 2
-    msg->msgID[0] = 0x01;      // Msg ID LSB (01h)
-    msg->msgID[1] = 0x06;      // Msg ID MSB (06h)
-    msg->payloadSize[0] = 0x04; // Payload size LSB (04h)
-    msg->payloadSize[1] = 0x00; // Payload size MSB (00h)
+    DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
     
-    // Allocate space for payload and fill it with motor settings
-    msg->payload = (uint8_t*) malloc(4 * sizeof(uint8_t));
-    msg->payload[0] = motorADirection;  // Motor A Direction 0 = brake, 1 = forward, 2 = reverse
-    msg->payload[1] = motorAPWM;        // Motor A PWM (0-100)
-    msg->payload[2] = motorBDirection;  // Motor B Direction 
-    msg->payload[3] = motorBPWM;        // Motor B PWM (0-100)
+    // Initialize the communication start flag
+    msg->isStartCommunication = 0x01;   // Set to 1 to start communication
     
+    // Sync bytes (these are hardcoded, adjust if needed)
+    msg->sync[0] = 0xFE;
+    msg->sync[1] = 0x19;
+    
+    // Message ID (example: 0x01 0x06)
+    msg->msgID = 0x0601;  // Combine the MSB and LSB for 16-bit msgID
+    
+    // Payload size (4 bytes for the motor settings)
+    msg->payloadSize = 4; // Four bytes for motor directions and PWMs
+    
+    // Fill the payload with motor settings
+    msg->payload[0] = motorADirection;  // Motor A Direction
+    msg->payload[1] = motorAPWM;        // Motor A PWM
+    msg->payload[2] = motorBDirection;  // Motor B Direction
+    msg->payload[3] = motorBPWM;        // Motor B PWM
+    
+    // Set dataReadCount (usually indicates the amount of data read so far, set to 0 initially)
+    msg->dataReadCount = 0;
+    
+    // Send the message via UART (assuming sendUARTMessage takes the DataUART structure)
     sendUARTMessage(msg);
     
-    free(msg->payload);
+    // Free allocated memory
     free(msg);
 }
+
 
 // 1.3.7. Message 0701h: Set Servo Pulses Command
 void setServoPulses(DataUART *msg){
