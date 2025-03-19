@@ -159,25 +159,28 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-                PCUInfo x = getPCUInfo();
-                PCUInfo y = x;
                 
-                UserDataResponse a = getUserData();
-                UserDataResponse b = a;
-                
-                // Enable Solar Array Block
-                if (a.switchB == 0x03E8) {
-                    enableSolarArrayBlock();
-                }
-                else {
-                    disableSolarArrayBlock();
-                }
                 
                 btnReleased = 0;
             }
         }
         else {
             btnReleased = 1;
+        }
+        
+        
+        PCUInfo x = getPCUInfo();
+        PCUInfo y = x;
+        
+        UserDataResponse a = getUserData();
+        UserDataResponse b = a;
+        
+        // Enable Solar Array Block
+        if (a.switchB == 0x03E8) {
+            enableSolarArrayBlock();
+        }
+        else {
+            disableSolarArrayBlock();
         }
     }
     
@@ -304,13 +307,13 @@ void setupUART(void) {
 // Setup UART receiver
 void setupReceiverUART(void) {
     // Set RX pin as Digital
-    ANSELCbits.ANSC5 = 0;
+    ANSELCbits.ANSC6 = 0;
     
     // Configure RX/DT I/O pin as input
-    TRISCbits.TRISC5 = 1;
+    TRISCbits.TRISC6 = 1;
     
-    // Configure to set receiver input to pin RC5
-    RXPPS = 0x15;
+    // Configure to set receiver input to pin RC6
+    RXPPS = 0x16;
     
     // Enable Receiver
     RC1STAbits.CREN = 1;
@@ -319,13 +322,13 @@ void setupReceiverUART(void) {
 // Setup UART transmitter
 void setupTransmitterUART(void) {
     // Set TX pin as Digital
-    ANSELCbits.ANSC6 = 0;
+    ANSELCbits.ANSC5 = 0;
     
     // Configure TX I/O pin as output
-    TRISCbits.TRISC6 = 0;
+    TRISCbits.TRISC5 = 0;
     
-    // Configure to set transmitter output to pin RC6
-    RC6PPS = 0x10;
+    // Configure to set transmitter output to pin RC5
+    RC5PPS = 0x10;
     
     // Enabling Transmitter
     TX1STAbits.TXEN = 1;
