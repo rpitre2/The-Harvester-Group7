@@ -48,6 +48,7 @@
 #include <xc.h>
 #include <stdint.h>
 #include "optical_signal.h"
+#include "movement.h"
 
 #define _XTAL_FREQ 32000000
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
