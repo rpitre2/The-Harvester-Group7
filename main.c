@@ -71,7 +71,7 @@ typedef struct {
     uint8_t sync[2];
     uint16_t msgID;
     uint16_t payloadSize;
-    uint8_t* payload;
+    uint8_t payload[MAX_PAYLOAD_SIZE];
     uint16_t dataReadCount;
 } DataUART;
 
@@ -120,7 +120,7 @@ void sendUARTMessage(DataUART *msg);
 
 void setupInterrupt(void);
 
-DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount);
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount);
 
 void setupOpticalSignalDecoding(void);
 
@@ -454,7 +454,9 @@ DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16
     msg->sync[1] = 0x19;
     msg->msgID = msgId;
     msg->payloadSize = payloadSize;
-    msg->payload = payload;
+    for (uint16_t i = 0; i < payloadSize; i++) {
+        msg->payload[i] = payload[i];
+    }
     msg->dataReadCount = dataReadCount;
     return msg;
 }
