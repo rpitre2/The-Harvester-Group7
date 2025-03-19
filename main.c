@@ -62,6 +62,11 @@ enum Ore {
     AUROTITE = 5 // Blue and Yellow
 };
 
+enum ShotType {
+    LOW_CALIBER = 1,
+    HIGH_CALIBER = 2
+};
+
 typedef struct {
     uint8_t isStartCommunication;
     uint8_t sync[2];
@@ -97,6 +102,8 @@ void sendUARTMessage(DataUART *msg);
 
 void setupInterrupt(void);
 
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount);
+
 ////// UART Commands ///// 
 DataUART getPCUInfo(); // 1.3.2. Message 0401h: Get PCU Info Command
 
@@ -108,7 +115,7 @@ void setServoPulses(DataUART *msg); // 1.3.7. Message 0701h: Set Servo Pulses Co
 
 void setLaserScope(DataUART *msg); // 1.3.8. Message 0801h: Set Laser Scope Command
 
-void shootLaserDamage(DataUART *msg); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
+void shootLaserDamage(enum ShotType shotType); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
 
 void shootLaserTurretShieldCode(DataUART *msg); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 
@@ -116,7 +123,7 @@ void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot
 
 void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
-void processingPlantOreType(Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 ////// UART Commands /////
 
 ///// Solar Array /////
@@ -144,8 +151,10 @@ void main(void) {
     {
         if (!PORTAbits.RA5) {
             if (btnReleased) {
-                DataUART x = getPCUInfo();
-                DataUART y = x;
+//                DataUART x = getPCUInfo();
+//                DataUART y = x;
+                
+                shootLaserDamage(HIGH_CALIBER);
                 
                 btnReleased = 0;
             }
@@ -348,6 +357,18 @@ void sendUARTMessage(DataUART *msg) {
     PIE3bits.TXIE = 1;
 }
 
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t* payload, uint8_t dataReadCount) {
+    DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
+    msg->isStartCommunication = isStartCommunication;
+    msg->sync[0] = 0xFE;
+    msg->sync[1] = 0x19;
+    msg->msgID = msgId;
+    msg->payloadSize = payloadSize;
+    msg->payload = payload;
+    msg->dataReadCount = dataReadCount;
+    return msg;
+}
+
 /////// Commands ////////////
 // 1.3.2. Message 0401h: Get PCU Info Command
 DataUART getPCUInfo(){
@@ -397,28 +418,28 @@ DataUART getUserData(){
     return receivedData;
 }
 
-// 1.3.6. Message 0601h: Set Motor Settings Command
-void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
-    UARTMessage* msg = (UARTMessage*) malloc(sizeof(UARTMessage));
-    msg->sync[0] = 0xFE;       // Sync Byte 1
-    msg->sync[1] = 0x19;       // Sync Byte 2
-    msg->msgID[0] = 0x01;      // Msg ID LSB (01h)
-    msg->msgID[1] = 0x06;      // Msg ID MSB (06h)
-    msg->payloadSize[0] = 0x04; // Payload size LSB (04h)
-    msg->payloadSize[1] = 0x00; // Payload size MSB (00h)
-    
-    // Allocate space for payload and fill it with motor settings
-    msg->payload = (uint8_t*) malloc(4 * sizeof(uint8_t));
-    msg->payload[0] = motorADirection;  // Motor A Direction 0 = brake, 1 = forward, 2 = reverse
-    msg->payload[1] = motorAPWM;        // Motor A PWM (0-100)
-    msg->payload[2] = motorBDirection;  // Motor B Direction 
-    msg->payload[3] = motorBPWM;        // Motor B PWM (0-100)
-    
-    sendUARTMessage(msg);
-    
-    free(msg->payload);
-    free(msg);
-}
+//// 1.3.6. Message 0601h: Set Motor Settings Command
+//void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
+//    UARTMessage* msg = (UARTMessage*) malloc(sizeof(UARTMessage));
+//    msg->sync[0] = 0xFE;       // Sync Byte 1
+//    msg->sync[1] = 0x19;       // Sync Byte 2
+//    msg->msgID[0] = 0x01;      // Msg ID LSB (01h)
+//    msg->msgID[1] = 0x06;      // Msg ID MSB (06h)
+//    msg->payloadSize[0] = 0x04; // Payload size LSB (04h)
+//    msg->payloadSize[1] = 0x00; // Payload size MSB (00h)
+//    
+//    // Allocate space for payload and fill it with motor settings
+//    msg->payload = (uint8_t*) malloc(4 * sizeof(uint8_t));
+//    msg->payload[0] = motorADirection;  // Motor A Direction 0 = brake, 1 = forward, 2 = reverse
+//    msg->payload[1] = motorAPWM;        // Motor A PWM (0-100)
+//    msg->payload[2] = motorBDirection;  // Motor B Direction 
+//    msg->payload[3] = motorBPWM;        // Motor B PWM (0-100)
+//    
+//    sendUARTMessage(msg);
+//    
+//    free(msg->payload);
+//    free(msg);
+//}
 
 // 1.3.7. Message 0701h: Set Servo Pulses Command
 void setServoPulses(DataUART *msg){
@@ -428,11 +449,15 @@ void setServoPulses(DataUART *msg){
 // 1.3.8. Message 0801h: Set Laser Scope Command
 void setLaserScope(DataUART *msg){
     
+    
 }
 
 // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
-void shootLaserDamage(DataUART *msg){
+void shootLaserDamage(enum ShotType shotType){
+    DataUART* msg = createUARTMessage(0, 0x0901, 0x0001, &shotType, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
@@ -451,7 +476,7 @@ void shootLaserTransmitRepairCode(DataUART *msg){
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
-void processingPlantOreType(Ore oreValue){
+void processingPlantOreType(enum Ore oreValue){
     receivedData = EMPTY_DATA_RESET;
     
     DataUART msg = {
@@ -459,7 +484,7 @@ void processingPlantOreType(Ore oreValue){
                     .sync = {0xFE, 0x19},
                     .msgID = 0x0A03,
                     .payloadSize = 0x0001,
-                    .payload = oreValue,
+                    .payload = &oreValue,
                     .dataReadCount = 0
     };
     
