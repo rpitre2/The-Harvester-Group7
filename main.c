@@ -48,16 +48,24 @@
 #include <xc.h>
 #include <stdint.h>
 #include "optical_signal.h"
-#include "movement.h"
+//#include "movement.h"
 
 #define _XTAL_FREQ 32000000
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
-#define MAX_PAYLOAD_SIZE 20
+#define MAX_PAYLOAD_SIZE 50
 #define VALUE_2000 0x7D0
 #define VALUE_1500 0x5DC
 #define VALUE_1000 0x3E8
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
+
+enum Ore {
+    SOLAR_FLARE = 1, // Red
+    AURORIUM = 2, // Yellow
+    COBALTITE = 3, // Blue
+    SOLARIUM = 4, // Red and Yellow
+    AUROTITE = 5 // Blue and Yellow
+};
 
 typedef struct {
     uint8_t isStartCommunication;
@@ -99,6 +107,8 @@ uint8_t txHead = 0; // Index for adding data
 uint8_t txTail = 0; // Index for transmitting data
 uint8_t txCount = 0; // Number of bytes in the buffer
 
+void movementControl(uint16_t y_stick, uint16_t x_stick);
+
 void __interrupt() interruptReceiver(void);
 
 void initializeUARTBaud115200(void);
@@ -113,6 +123,8 @@ void sendUARTMessage(DataUART *msg);
 
 void setupInterrupt(void);
 
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount);
+
 void setupOpticalSignalDecoding(void);
 
 ////// UART Commands ///// 
@@ -120,21 +132,22 @@ PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
 UserDataResponse getUserData(void); // 1.3.4. Message 0501h: Get User Data Command
 
-void setMotorSettings(DataUART *msg); // 1.3.6. Message 0601h: Set Motor Settings Command
+void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM);
 
 void setServoPulses(DataUART *msg); // 1.3.7. Message 0701h: Set Servo Pulses Command
 
-void setLaserScope(DataUART *msg); // 1.3.8. Message 0801h: Set Laser Scope Command
+void setLaserScope(uint8_t enable); // 1.3.8. Message 0801h: Set Laser Scope Command
 
-void shootLaserDamage(DataUART *msg); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
+void shootLaserDamage(); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
 
-void shootLaserTurretShieldCode(DataUART *msg); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
+void shootLaserTurretShieldCode(); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 
-void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
+void shootLaserRequestRepairCode(); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
 
-void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
+void shootLaserTransmitRepairCode(); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
-void processingPlantOreType(DataUART *msg); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+
 ////// UART Commands /////
 
 /////////////////////////////// Solar Array ////////////////////
@@ -179,6 +192,7 @@ void main(void) {
 //                    LATAbits.LATA0 = 0;
 //                }
                 
+                
                 btnReleased = 0;
             }
         }
@@ -202,7 +216,27 @@ void main(void) {
             LATAbits.LATA0 = 0;
             disableSolarArrayBlock();
         }
+        
         movementControl(a.rightJoystickY, a.leftJoystickX);
+        
+        if (a.switchA == 2000) {
+            setLaserScope(1);
+        }
+
+        
+        if (a.switchD == 2000) {
+            if (a.potentiometerVRB >= 1000 && a.potentiometerVRB <= 1199) {
+                processingPlantOreType(SOLAR_FLARE);
+            } else if (a.potentiometerVRB >= 1200 && a.potentiometerVRB <= 1399) {
+                processingPlantOreType(AURORIUM);
+            } else if (a.potentiometerVRB >= 1400 && a.potentiometerVRB <= 1599) {
+                processingPlantOreType(COBALTITE);
+            } else if (a.potentiometerVRB >= 1600 && a.potentiometerVRB <= 1799) {
+                processingPlantOreType(SOLARIUM);
+            } else if (a.potentiometerVRB >= 1800) {
+                processingPlantOreType(AUROTITE);
+            }
+        }
     }
     
     return;
@@ -423,6 +457,20 @@ void sendUARTMessage(DataUART *msg) {
     PIE3bits.TXIE = 1;
 }
 
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount) {
+    DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
+    msg->isStartCommunication = isStartCommunication;
+    msg->sync[0] = 0xFE;
+    msg->sync[1] = 0x19;
+    msg->msgID = msgId;
+    msg->payloadSize = payloadSize;
+    for (uint16_t i = 0; i < payloadSize; i++) {
+        msg->payload[i] = payload[i];
+    }
+    msg->dataReadCount = dataReadCount;
+    return msg;
+}
+
 /////// Commands ////////////
 // 1.3.2. Message 0401h: Get PCU Info Command
 PCUInfo getPCUInfo(){
@@ -528,10 +576,15 @@ UserDataResponse getUserData(){
 
 // I am going to fix how this is called after the demo
 void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
+<<<<<<< Updated upstream
     DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
     
     // Initialize the communication start flag
     msg->isStartCommunication = 0x01;   // Set to 1 to start communication
+=======
+    uint8_t motorSettings[] = {motorADirection, motorAPWM, motorBDirection, motorBPWM};
+    DataUART* msg = createUARTMessage(0, 0x0601, 0x0004, motorSettings, 0);
+>>>>>>> Stashed changes
     
     // Sync bytes (these are hardcoded, adjust if needed)
     msg->sync[0] = 0xFE;
@@ -554,8 +607,12 @@ void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorB
     
     // Send the message via UART (assuming sendUARTMessage takes the DataUART structure)
     sendUARTMessage(msg);
+<<<<<<< Updated upstream
     
     // Free allocated memory
+=======
+   
+>>>>>>> Stashed changes
     free(msg);
 }
 
@@ -566,33 +623,52 @@ void setServoPulses(DataUART *msg){
 }
 
 // 1.3.8. Message 0801h: Set Laser Scope Command
-void setLaserScope(DataUART *msg){
+void setLaserScope(uint8_t enable){
+    DataUART* msg = createUARTMessage(0, 0x0801, 0x0001, &enable, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
-void shootLaserDamage(DataUART *msg){
+void shootLaserDamage(){
+    uint8_t shotType = 0x2;
+    DataUART* msg = createUARTMessage(0, 0x0901, 0x0001, &shotType, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
-void shootLaserTurretShieldCode(DataUART *msg){
+void shootLaserTurretShieldCode(){
+    DataUART* msg = createUARTMessage(0, 0x0902, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
-void shootLaserRequestRepairCode(DataUART *msg){
+void shootLaserRequestRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0903, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
-void shootLaserTransmitRepairCode(DataUART *msg){
+void shootLaserTransmitRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0904, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
-void processingPlantOreType(DataUART *msg){
+void processingPlantOreType(enum Ore oreValue){
+    DataUART* msg = createUARTMessage(0, 0x0A03, 0x0001, &oreValue, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 /////// Commands ////////////
 /////////////////////////////// UART ///////////////////////
@@ -617,3 +693,77 @@ void disableSolarArrayBlock(void) {
     return;
 }
 /////////////////////////////// Solar Array ////////////////////
+
+
+void movementControl(uint16_t y_stick, uint16_t x_stick){
+    uint8_t motorADirection = 0;
+    uint8_t motorBDirection = 0;
+    uint8_t motorAPWM = 0;
+    uint8_t motorBPWM = 0;
+    
+    // Handle Forward/Reverse Movement based on joystick input
+    if (y_stick < 1480) {
+        // Reverse (PWM increases as joystick value decreases)
+        motorADirection = 1;   // Reverse
+        motorBDirection = 2;   // Reverse
+        motorAPWM = (uint8_t)(100 - (y_stick - 1000) / 4.8); // PWM increases as joystick value decreases
+        motorBPWM = (uint8_t)(100 - (y_stick - 1000) / 4.8); // PWM increases as joystick value decreases
+    } else if (y_stick > 1520) {
+        // Forward (PWM increases as joystick value increases)
+        motorADirection = 2;   // Forward
+        motorBDirection = 1;   // Forward
+        motorAPWM = (uint8_t)((y_stick - 1520) / 4.8); // PWM increases as joystick value increases
+        motorBPWM = (uint8_t)((y_stick - 1520) / 4.8); // PWM increases as joystick value increases
+    }
+    
+    uint8_t turnFactor = 0;
+    if ((y_stick > 1400 && y_stick < 1600) && (x_stick > 1400 && x_stick < 1600)){
+        motorADirection = 0; // Default to brake
+        motorBDirection = 0; // Default to brake
+        motorAPWM = 0;       // Default PWM
+        motorBPWM = 0;       // Default PWM
+    }
+    else if (x_stick < 1450) {
+        // Left turn (PWM decreases based on proximity to 1000)
+        turnFactor = (uint8_t)((1450 - x_stick) / 4.5);  // Calculate turn factor (closer to 1000 = stronger left turn)
+         // Apply turning if joystick is in forward or reverse movement
+        if (y_stick < 1480 || y_stick > 1520) {
+            motorAPWM -= turnFactor/2;  // Slow down motor A (left side)
+            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
+        } else {
+            motorADirection = 2;  // Reverse
+            motorBDirection = 1;  // Forward
+            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
+            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
+        }
+    } else if (x_stick > 1550) {
+        // Right turn (PWM decreases based on proximity to 2000)
+        turnFactor = (uint8_t)((x_stick - 1550) / 4.5);  // Calculate turn factor (closer to 2000 = stronger right turn)
+        if (y_stick < 1480 || y_stick > 1520) {
+            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
+            motorBPWM -= turnFactor/2;  // Speed up motor B (right side)
+        } else {
+            motorADirection = 1;  // Reverse
+            motorBDirection = 2;  // Forward
+            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
+            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
+
+        }
+    }
+
+    if (motorAPWM < 25){
+        motorAPWM = 25;
+    } else if (motorAPWM > 100){
+        motorAPWM = 100;
+    }
+    if (motorBPWM < 25){
+        motorBPWM = 25;
+    } else if (motorBPWM > 100){
+        motorBPWM = 100;
+    }
+    
+
+
+    // Send the motor settings
+    setMotorSettings(motorADirection, motorAPWM, motorBDirection, motorBPWM);
+}
