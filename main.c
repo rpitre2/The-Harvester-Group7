@@ -576,15 +576,10 @@ UserDataResponse getUserData(){
 
 // I am going to fix how this is called after the demo
 void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
-<<<<<<< Updated upstream
     DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
     
     // Initialize the communication start flag
     msg->isStartCommunication = 0x01;   // Set to 1 to start communication
-=======
-    uint8_t motorSettings[] = {motorADirection, motorAPWM, motorBDirection, motorBPWM};
-    DataUART* msg = createUARTMessage(0, 0x0601, 0x0004, motorSettings, 0);
->>>>>>> Stashed changes
     
     // Sync bytes (these are hardcoded, adjust if needed)
     msg->sync[0] = 0xFE;
@@ -607,12 +602,8 @@ void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorB
     
     // Send the message via UART (assuming sendUARTMessage takes the DataUART structure)
     sendUARTMessage(msg);
-<<<<<<< Updated upstream
     
     // Free allocated memory
-=======
-   
->>>>>>> Stashed changes
     free(msg);
 }
 
