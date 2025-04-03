@@ -49,11 +49,11 @@
 #include <stdint.h>
 #include <string.h> 
 #include "optical_signal.h"
-#include "movement.h"
+//#include "movement.h"
 
 #define _XTAL_FREQ 32000000
 #define TX_BUFFER_SIZE 64 // Transmission buffer size
-#define MAX_PAYLOAD_SIZE 20
+#define MAX_PAYLOAD_SIZE 50
 #define VALUE_2000 0x7D0
 #define VALUE_1500 0x5DC
 #define VALUE_1000 0x3E8
@@ -65,6 +65,14 @@ enum Ore {
 };
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
+
+enum Ore {
+    SOLAR_FLARE = 1, // Red
+    AURORIUM = 2, // Yellow
+    COBALTITE = 3, // Blue
+    SOLARIUM = 4, // Red and Yellow
+    AUROTITE = 5 // Blue and Yellow
+};
 
 typedef struct {
     uint8_t isStartCommunication;
@@ -106,6 +114,8 @@ uint8_t txHead = 0; // Index for adding data
 uint8_t txTail = 0; // Index for transmitting data
 uint8_t txCount = 0; // Number of bytes in the buffer
 
+void movementControl(uint16_t y_stick, uint16_t x_stick);
+
 void __interrupt() interruptReceiver(void);
 
 void initializeUARTBaud115200(void);
@@ -119,6 +129,8 @@ void setupTransmitterUART(void);
 void sendUARTMessage(DataUART *msg);
 
 void setupInterrupt(void);
+
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount);
 
 void setupOpticalSignalDecoding(void);
 
@@ -135,13 +147,13 @@ void setServoPulses(uint8_t isEnabledOreCollection); // 1.3.7. Message 0701h: Se
 
 void setLaserScope(uint8_t enableFlag); // 1.3.8. Message 0801h: Set Laser Scope Command
 
-void shootLaserDamage(DataUART *msg); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
+void shootLaserTurretShieldCode(); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
 
-void shootLaserTurretShieldCode(DataUART *msg); // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
+void shootLaserRequestRepairCode(); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
 
-void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
+void shootLaserTransmitRepairCode(); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
-void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
+void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 
 void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 ////// UART Commands /////
@@ -206,6 +218,7 @@ void main(void) {
 //                {
 //                    LATAbits.LATA0 = 0;
 //                }
+                
                 
                 btnReleased = 0;
             }
@@ -496,6 +509,20 @@ void sendUARTMessage(DataUART *msg) {
     PIE3bits.TXIE = 1;
 }
 
+DataUART* createUARTMessage(uint8_t isStartCommunication, uint16_t msgId, uint16_t payloadSize, uint8_t payload[], uint8_t dataReadCount) {
+    DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
+    msg->isStartCommunication = isStartCommunication;
+    msg->sync[0] = 0xFE;
+    msg->sync[1] = 0x19;
+    msg->msgID = msgId;
+    msg->payloadSize = payloadSize;
+    for (uint16_t i = 0; i < payloadSize; i++) {
+        msg->payload[i] = payload[i];
+    }
+    msg->dataReadCount = dataReadCount;
+    return msg;
+}
+
 /////// Commands ////////////
 // 1.3.4. Message 0403h: Set PCU Info Command
 void setPCUInfo(){
@@ -699,23 +726,36 @@ void setLaserScope(uint8_t enableFlag){
 }
 
 // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
-void shootLaserDamage(DataUART *msg){
+void shootLaserDamage(){
+    uint8_t shotType = 0x2;
+    DataUART* msg = createUARTMessage(0, 0x0901, 0x0001, &shotType, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.10. Message 0902h: Shoot Laser (Turret Shield Code) Command
-void shootLaserTurretShieldCode(DataUART *msg){
+void shootLaserTurretShieldCode(){
+    DataUART* msg = createUARTMessage(0, 0x0902, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.11. Message 0903h: Shoot Laser (Request Repair Code) Command
-void shootLaserRequestRepairCode(DataUART *msg){
+void shootLaserRequestRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0903, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
-void shootLaserTransmitRepairCode(DataUART *msg){
+void shootLaserTransmitRepairCode(){
+    DataUART* msg = createUARTMessage(0, 0x0904, 0x0000, NULL, 0);
     
+    sendUARTMessage(msg);
+    free(msg);
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command

@@ -1,6 +1,9 @@
+/build/
+/dist/
 # .gitignore
 
 # Ignore build directories
 build/
 dist/
 nbproject/
+debug/
