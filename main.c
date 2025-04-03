@@ -47,6 +47,7 @@
 
 #include <xc.h>
 #include <stdint.h>
+#include <string.h> 
 #include "optical_signal.h"
 #include "movement.h"
 
@@ -56,6 +57,12 @@
 #define VALUE_2000 0x7D0
 #define VALUE_1500 0x5DC
 #define VALUE_1000 0x3E8
+
+enum Ore {
+    SOLAR_FLARE = 1, // Red
+    AURORIUM = 2, // Yellow
+    COBALTITE = 3 // Blue
+};
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
 
@@ -116,15 +123,17 @@ void setupInterrupt(void);
 void setupOpticalSignalDecoding(void);
 
 ////// UART Commands ///// 
+void setPCUInfo(); // 1.3.1. Message 0403h: Set PCU Info Command
+
 PCUInfo getPCUInfo(void); // 1.3.2. Message 0401h: Get PCU Info Command
 
 UserDataResponse getUserData(void); // 1.3.4. Message 0501h: Get User Data Command
 
-void setMotorSettings(DataUART *msg); // 1.3.6. Message 0601h: Set Motor Settings Command
+void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM); // 1.3.6. Message 0601h: Set Motor Settings Command
 
-void setServoPulses(DataUART *msg); // 1.3.7. Message 0701h: Set Servo Pulses Command
+void setServoPulses(uint8_t isEnabledOreCollection); // 1.3.7. Message 0701h: Set Servo Pulses Command
 
-void setLaserScope(DataUART *msg); // 1.3.8. Message 0801h: Set Laser Scope Command
+void setLaserScope(uint8_t enableFlag); // 1.3.8. Message 0801h: Set Laser Scope Command
 
 void shootLaserDamage(DataUART *msg); // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
 
@@ -134,7 +143,7 @@ void shootLaserRequestRepairCode(DataUART *msg); // 1.3.11. Message 0903h: Shoot
 
 void shootLaserTransmitRepairCode(DataUART *msg); // 1.3.12. Message 0904h: Shoot Laser (Transmit Repair Code) Command
 
-void processingPlantOreType(DataUART *msg); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
+void processingPlantOreType(enum Ore oreValue); // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
 ////// UART Commands /////
 
 /////////////////////////////// Solar Array ////////////////////
@@ -144,6 +153,19 @@ void enableSolarArrayBlock(void);
 
 void disableSolarArrayBlock(void);
 /////////////////////////////// Solar Array ////////////////////
+
+
+////////////////////// Ore Processing Status ///////////////////
+void setupOreProcessingStatus();
+
+void enableOrangeProcessingStatus(void);
+
+void enableBlueProcessingStatus(void);
+
+void enableYellowProcessingStatus(void);
+
+void disableProcessingStatus(void);
+////////////////////// Ore Processing Status ///////////////////
 
 void main(void) {
     initializeUARTBaud115200();
@@ -157,11 +179,17 @@ void main(void) {
     setupInterrupt();
     
     setupSolarArrayBlock();
+    
     setupOpticalSignalDecoding();
+    
+    setupOreProcessingStatus();
     
     // Switch S2 (RA5)
     TRISAbits.TRISA5 = 1;
     ANSELAbits.ANSA5 = 0;
+    
+    // Set team id, player id, device id
+    setPCUInfo();
     
     while(1)
     {
@@ -186,6 +214,9 @@ void main(void) {
             btnReleased = 1;
         }
         
+        PWM1_Initialize(PWM_PERIOD_BLUE, PWM_PRESCALER);
+        PWM1_SetDuty(512); // 0-1024
+        
         
         PCUInfo x = getPCUInfo();
         PCUInfo y = x;
@@ -193,7 +224,13 @@ void main(void) {
         UserDataResponse a = getUserData();
         UserDataResponse b = a;
         
-        // Enable Solar Array Block
+        // Enable laser scope
+        //setLaserScope(0x01);
+        
+        // Disable laser scope
+        //setLaserScope(0x00);
+        
+        // Toggle Solar Array Block
         if (a.switchB == 0x03E8) {
             LATAbits.LATA0 = 1;
             enableSolarArrayBlock();
@@ -202,7 +239,43 @@ void main(void) {
             LATAbits.LATA0 = 0;
             disableSolarArrayBlock();
         }
-        movementControl(a.rightJoystickY, a.leftJoystickX);
+        
+        // Toggle Ore Processing LED Status
+        // SOLAR_FLARE Orange/RED status = Orange/RED ore for a value between 1050-1366
+        if (a.potentiometerVRA >= 0x41A && a.potentiometerVRA <= 0x556) {
+            enableOrangeProcessingStatus();
+            // Enable ore processing for selected type
+            processingPlantOreType(SOLAR_FLARE);
+        }
+        // COBALTITE blue status = blue ore for a value between 1367-1683
+        else if (a.potentiometerVRA >= 0x557 && a.potentiometerVRA <= 0x693) {
+            enableBlueProcessingStatus();
+            // Enable ore processing for selected type
+            processingPlantOreType(COBALTITE);
+        }
+        // AURORIUM Yellow status = yellow ore for a value between 1684-2000
+        else if (a.potentiometerVRA >= 0x694) {
+            enableYellowProcessingStatus();
+            // Enable ore processing for selected type
+            processingPlantOreType(AURORIUM);
+        }
+        // Off status for a value between 1000-1049
+        else {
+            disableProcessingStatus();
+            //setLaserScope(0x01);
+            setLaserScope(0x00);
+        }
+        
+        // Motor Controls
+        //movementControl(a.rightJoystickY, a.leftJoystickX);
+        
+        // Toggle Ore Collection
+        if (a.switchA == 0x03E8) {
+            setServoPulses(0x0);
+        }
+        else {
+            setServoPulses(0x1);
+        }
     }
     
     return;
@@ -424,6 +497,28 @@ void sendUARTMessage(DataUART *msg) {
 }
 
 /////// Commands ////////////
+// 1.3.4. Message 0403h: Set PCU Info Command
+void setPCUInfo(){
+    // Team ID 2, Player ID 7, Device ID 1 Rover
+    uint8_t roverInitValue[MAX_PAYLOAD_SIZE] = {0x02, 0x07, 0x01};
+    
+    DataUART msg = {
+                    .isStartCommunication = 0,
+                    .sync = {0xFE, 0x19},
+                    .msgID = 0x0403,
+                    .payloadSize = 0x0003,
+//                  .payload = NULL,
+                    .dataReadCount = 0
+    };
+    
+    // Copy message to payload
+    memcpy(msg.payload, roverInitValue, 3);
+    
+    sendUARTMessage(&msg);
+    
+    return;
+}
+
 // 1.3.2. Message 0401h: Get PCU Info Command
 PCUInfo getPCUInfo(){
     DataUART msgReceived;
@@ -454,7 +549,7 @@ PCUInfo getPCUInfo(){
     msgReceived = receivedData;
     
     // Set user data response
-    if (msgReceived.payloadSize == 20) { //msgReceived.payload != NULL && 
+    if (msgReceived.payloadSize == 6) { //msgReceived.payload != NULL && 
         userResponseValue.teamID = msgReceived.payload[0];
 
         userResponseValue.playerID = msgReceived.payload[1];
@@ -530,8 +625,7 @@ UserDataResponse getUserData(){
 void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorBDirection, uint8_t motorBPWM) {
     DataUART* msg = (DataUART*) malloc(sizeof(DataUART));
     
-    // Initialize the communication start flag
-    msg->isStartCommunication = 0x01;   // Set to 1 to start communication
+    msg->isStartCommunication = 0x00;
     
     // Sync bytes (these are hardcoded, adjust if needed)
     msg->sync[0] = 0xFE;
@@ -561,13 +655,47 @@ void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM, uint8_t motorB
 
 
 // 1.3.7. Message 0701h: Set Servo Pulses Command
-void setServoPulses(DataUART *msg){
+void setServoPulses(uint8_t isEnabledOreCollection){
+    uint8_t servoPulses[MAX_PAYLOAD_SIZE] = {0x00, 0x00, 0x00};
     
+    if (isEnabledOreCollection == 0x01) {
+        servoPulses[0] = 0x3E;  // Servo 0 pulse - engaged
+    }
+    else {
+        servoPulses[0] = 0x00;  // Servo 0 pulse - initial state
+    }
+    
+    DataUART msg = {
+                    .isStartCommunication = 0,
+                    .sync = {0xFE, 0x19},
+                    .msgID = 0x0701,
+                    .payloadSize = 0x0003,
+//                  .payload = NULL,
+                    .dataReadCount = 0
+    };
+    
+    // Copy message to payload
+    memcpy(msg.payload, servoPulses, 3);
+    
+    sendUARTMessage(&msg);
+    
+    return;
 }
 
 // 1.3.8. Message 0801h: Set Laser Scope Command
-void setLaserScope(DataUART *msg){
+void setLaserScope(uint8_t enableFlag){
+    DataUART msg = {
+                    .isStartCommunication = 0,
+                    .sync = {0xFE, 0x19},
+                    .msgID = 0x0801,
+                    .payloadSize = 0x0001,
+                    .payload = enableFlag,
+                    .dataReadCount = 0
+    };
     
+    sendUARTMessage(&msg);
+    
+    return;
 }
 
 // 1.3.9. Message 0901h: Shoot Laser (Damage) Command
@@ -591,8 +719,21 @@ void shootLaserTransmitRepairCode(DataUART *msg){
 }
 
 // 1.3.14. Message 0A03h: Processing Plant Ore Type Command
-void processingPlantOreType(DataUART *msg){
+void processingPlantOreType(enum Ore oreValue){
+    receivedData = EMPTY_DATA_RESET;
     
+    DataUART msg = {
+                    .isStartCommunication = 0,
+                    .sync = {0xFE, 0x19},
+                    .msgID = 0x0A03,
+                    .payloadSize = 0x0001,
+//                    .payload = NULL,
+                    .dataReadCount = 0
+    };
+    
+    msg.payload[0] = (uint8_t)oreValue;
+    
+    sendUARTMessage(&msg);
 }
 /////// Commands ////////////
 /////////////////////////////// UART ///////////////////////
@@ -608,12 +749,63 @@ void setupSolarArrayBlock() {
 }
 
 void enableSolarArrayBlock(void) {
-    PORTBbits.RB0 = 1;
+    LATBbits.LATB0 = 1;
     return;
 }
 
 void disableSolarArrayBlock(void) {
-    PORTBbits.RB0 = 0;
+    LATBbits.LATB0 = 0;
     return;
 }
 /////////////////////////////// Solar Array ////////////////////
+
+/////////////////////////////// Ore Processing Status ////////////////////
+void setupOreProcessingStatus() {
+    // Control orange processing status with pin RB1
+    // Output
+    TRISBbits.TRISB1 = 0;
+    // Digital
+    ANSELBbits.ANSB1 = 0;
+    
+    // Control blue processing status with pin RB2
+    // Output
+    TRISBbits.TRISB2 = 0;
+    // Digital
+    ANSELBbits.ANSB2 = 0;
+    
+    // Control yellow processing status with pin RB3
+    // Output
+    TRISBbits.TRISB3 = 0;
+    // Digital
+    ANSELBbits.ANSB3 = 0;
+    return;
+}
+
+void enableOrangeProcessingStatus(void) {
+    LATBbits.LATB1 = 0;
+    LATBbits.LATB2 = 1;
+     LATBbits.LATB3 = 1;
+    return;
+}
+
+void enableBlueProcessingStatus(void) {
+    LATBbits.LATB1 = 1;
+    LATBbits.LATB2 = 0;
+     LATBbits.LATB3 = 1;
+    return;
+}
+
+void enableYellowProcessingStatus(void) {
+    LATBbits.LATB1 = 1;
+    LATBbits.LATB2 = 1;
+    LATBbits.LATB3 = 0;
+    return;
+}
+
+void disableProcessingStatus(void) {
+    LATBbits.LATB1 = 1;
+    LATBbits.LATB2 = 1;
+    LATBbits.LATB3 = 1;
+    return;
+}
+/////////////////////////////// Ore Processing Status ////////////////////
