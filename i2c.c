@@ -36,7 +36,7 @@ void I2C_Write(uint8_t data)
 
 uint8_t I2C_ACK_Status()
 {
-    return !SSP2CON2bits.ACKSTAT;
+    return (uint8_t)(!SSP2CON2bits.ACKSTAT);
 }
 
 void I2C_Stop()
@@ -55,7 +55,7 @@ uint8_t I2C_Read()
 {
     SSP2CON2bits.RCEN = 1;
     while(!SSP2STATbits.BF);
-    return SSP2BUF;
+    return (uint8_t)(SSP2BUF);
 }
 
 void I2C_NACK()

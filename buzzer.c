@@ -89,32 +89,32 @@ void PWM1_SetDuty(uint16_t duty) {
 }
 
 
-void notmain(void) 
-{
-    TRISCbits.TRISC2 = 0;
-    ANSELCbits.ANSC2 = 0;
-    
-    PWM1_Initialize(PWM_PERIOD, 0b11);
-    PWM1_SetDuty(1); // 0-127
-    
-    while(1){
-        PWM1_Initialize(PWM_PERIOD, 0b11);
-        PWM1_SetDuty(1); // 0-127
-        __delay_ms(100);
-        PWM1_Initialize(PWM_PERIOD*2, 0b11); 
-        PWM1_SetDuty(1); // 0-127
-        __delay_ms(100);
-        PWM1_Initialize(PWM_PERIOD*4, 0b11);
-        PWM1_SetDuty(1); // 0-127
-        __delay_ms(100);
-        PWM1_Initialize(PWM_PERIOD*8, 0b11);
-        PWM1_SetDuty(1); // 0-127
-        __delay_ms(100);
-    }
-    
-    
-    // debug LED
-    TRISAbits.TRISA0 = 0;
-    ANSELAbits.ANSA0 = 0;
-    LATAbits.LATA0 = 0;
-}
+//void main(void) 
+//{
+//    TRISCbits.TRISC2 = 0;
+//    ANSELCbits.ANSC2 = 0;
+//    
+//    PWM1_Initialize(PWM_PERIOD, 0b11);
+//    PWM1_SetDuty(1); // 0-127
+//    
+//    while(1){
+//        PWM1_Initialize(PWM_PERIOD, 0b11);
+//        PWM1_SetDuty(1); // 0-127
+//        __delay_ms(100);
+//        PWM1_Initialize(PWM_PERIOD*2, 0b11); 
+//        PWM1_SetDuty(1); // 0-127
+//        __delay_ms(100);
+//        PWM1_Initialize(PWM_PERIOD*4, 0b11);
+//        PWM1_SetDuty(1); // 0-127
+//        __delay_ms(100);
+//        PWM1_Initialize(PWM_PERIOD*8, 0b11);
+//        PWM1_SetDuty(1); // 0-127
+//        __delay_ms(100);
+//    }
+//    
+//    
+//    // debug LED
+//    TRISAbits.TRISA0 = 0;
+//    ANSELAbits.ANSA0 = 0;
+//    LATAbits.LATA0 = 0;
+//}
