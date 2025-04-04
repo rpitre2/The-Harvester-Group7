@@ -52,7 +52,7 @@ void PWM1_Initialize(uint16_t period, uint8_t prescaler) {
     TRISCbits.TRISC2 = 1;         // Disable output driver temporarily (set as input)
 
     // Step 2: Set PWM period
-    PR2 = period;       // Load period value into PR2
+    PR2 = (uint8_t)(period);       // Load period value into PR2
 
     // Step 3: Configure CCP1 for PWM mode
     CCP1CON = 0x80;     // CCP1FMT=0 (left-aligned), PWM mode (CCP1M3:CCP1M0 = 1100)
@@ -71,9 +71,13 @@ void PWM1_Initialize(uint16_t period, uint8_t prescaler) {
     T2CONbits.ON = 1;   // Enable Timer2
 
     // Step 6: Wait for first overflow and enable pin
-    while (!PIR4bits.TMR2IF); // Wait until Timer2 overflows
+//    while (!PIR4bits.TMR2IF); // Wait until Timer2 overflows
     TRISCbits.TRISC2 = 0;         // Enable RC2 output driver
 }
+
+//void PWM1_Update(uint16_t period) {
+//    PR2 = (uint8_t)(period);
+//}
 
 void PWM1_SetDuty(uint16_t duty) {
     duty &= 0x03FF; // Ensure duty is within 10-bit range

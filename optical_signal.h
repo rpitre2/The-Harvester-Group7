@@ -6,7 +6,7 @@
 #include "buzzer.h"
 
 
-void OSD_Read_Colours(void);
+void OSD_Process_Colours(ColourReading read);
 
 #define OPTICAL_SIGNAL_H
 #endif

@@ -4,7 +4,7 @@
 extern void setMotorSettings(uint8_t motorADirection, uint8_t motorAPWM,
                              uint8_t motorBDirection, uint8_t motorBPWM);
            
-void movementControl(uint16_t y_stick, uint16_t x_stick){
+void movementControl2(uint16_t y_stick, uint16_t x_stick){
     uint8_t motorADirection = 0;
     uint8_t motorBDirection = 0;
     uint8_t motorAPWM = 0;

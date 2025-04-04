@@ -8,6 +8,7 @@
 #define PWM_PRESCALER 0b111
 
 void PWM1_Initialize(uint16_t period, uint8_t prescaler);
+//void PWM1_Update(uint16_t period);
 void PWM1_SetDuty(uint16_t duty);
 
 #define BUZZER_H

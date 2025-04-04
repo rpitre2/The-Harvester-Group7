@@ -11,16 +11,15 @@ ColourReading ColourSensor_ReadColours()
 {
     ColourReading reading;
     
-    uint16_t red  = I2C_ReadByte(APDS_I2C_ADDRESS, APDS_RDATAH) << 8;
-    red = reading.red_channel | I2C_ReadByte(APDS_I2C_ADDRESS, APDS_RDATAL);
+    reading.red_channel = (uint16_t)(I2C_ReadByte(APDS_I2C_ADDRESS, APDS_RDATAH) << 8);
+    reading.red_channel = reading.red_channel | I2C_ReadByte(APDS_I2C_ADDRESS, APDS_RDATAL);
    
     
-    reading.green_channel = I2C_ReadByte(APDS_I2C_ADDRESS, APDS_GDATAH) << 8;
+    reading.green_channel = (uint16_t)(I2C_ReadByte(APDS_I2C_ADDRESS, APDS_GDATAH) << 8);
     reading.green_channel = reading.green_channel | I2C_ReadByte(APDS_I2C_ADDRESS, APDS_GDATAL);
     
-    reading.blue_channel = I2C_ReadByte(APDS_I2C_ADDRESS, APDS_BDATAH) << 8;
+    reading.blue_channel = (uint16_t)(I2C_ReadByte(APDS_I2C_ADDRESS, APDS_BDATAH) << 8);
     reading.blue_channel = reading.blue_channel | I2C_ReadByte(APDS_I2C_ADDRESS, APDS_BDATAL);
     
-    reading.red_channel = red;
     return reading;
 }

@@ -48,6 +48,8 @@
 #include <xc.h>
 #include <stdint.h>
 #include "optical_signal.h"
+#include "i2c.h"
+#include "colour_sensor.h"
 //#include "movement.h"
 
 #define _XTAL_FREQ 32000000
@@ -58,6 +60,7 @@
 #define VALUE_1000 0x3E8
 
 uint8_t btnReleased = 1; // Check for if button was pressed and then released
+ColourReading colourReading = {0, 0, 0};
 
 enum Ore {
     SOLAR_FLARE = 1, // Red
@@ -176,31 +179,10 @@ void main(void) {
     TRISAbits.TRISA5 = 1;
     ANSELAbits.ANSA5 = 0;
     
+    PWM1_Initialize(PWM_PERIOD_BLUE, PWM_PRESCALER);
+    
     while(1)
-    {
-        if (!PORTAbits.RA5) {
-            if (btnReleased) {
-                
-                
-//                if(x.switchC == VALUE_2000) // Optical Signal Decoding (2000 = On)
-//                {
-//                    LATAbits.LATA0 = 1;
-//                    OSD_Read_Colours();
-//                }
-//                else 
-//                {
-//                    LATAbits.LATA0 = 0;
-//                }
-                
-                
-                btnReleased = 0;
-            }
-        }
-        else {
-            btnReleased = 1;
-        }
-        
-        
+    {        
         PCUInfo x = getPCUInfo();
         PCUInfo y = x;
         
@@ -216,11 +198,18 @@ void main(void) {
             LATAbits.LATA0 = 0;
             disableSolarArrayBlock();
         }
-        
-        movementControl(a.rightJoystickY, a.leftJoystickX);
-        
+
         if (a.switchA == 2000) {
             setLaserScope(1);
+        }
+        
+        if(a.switchD == VALUE_2000) {
+            colourReading = ColourSensor_ReadColours();
+        }
+        else {
+            colourReading.red_channel = 0;
+            colourReading.green_channel = 0;
+            colourReading.blue_channel = 0;
         }
 
         
@@ -237,12 +226,37 @@ void main(void) {
                 processingPlantOreType(AUROTITE);
             }
         }
+//        movementControl(a.rightJoystickY, a.leftJoystickX);
     }
     
     return;
 }
 
 void __interrupt() mainISR(void) {    
+    
+    if(PIR4bits.TMR2IF)
+    {
+//        PIE3bits.RCIE = 0;
+//        PIE3bits.TXIE = 0;
+        
+        LATAbits.LATA1 = 1;
+//        UserDataResponse a = getUserData();
+//        if(a.switchA == VALUE_2000) {
+//        PWM1_Initialize(PWM_PERIOD_BLUE, PWM_PRESCALER);
+//        PWM1_SetDuty(512); // 0-1024
+//        OSD_Read_Colours();
+//        }
+        OSD_Process_Colours(colourReading);
+//        PIR4bits.TMR2IF = 0;
+//        PIE3bits.RCIE = 1;
+//        PIE3bits.TXIE = 1;
+    }
+    else 
+    {
+//        LATAbits.LATA1 = 0;
+    }
+    
+    
     // Transmitter Interrupt Flag
     if (PIE3bits.TXIE && PIR3bits.TXIF) {
         if (txCount > 0) {
@@ -257,7 +271,7 @@ void __interrupt() mainISR(void) {
     // Receiver Interrupt Flag
     if (PIE3bits.RCIE && PIR3bits.RCIF) {
         // Read RC1STA to check for errors
-        if (RC1STAbits.OERR) {
+        if (RC1STAbits.OERR || RC1STAbits.FERR) {
             // Clear overrun error
             RC1STAbits.CREN = 0;
             
@@ -301,11 +315,11 @@ void __interrupt() mainISR(void) {
                         receivedData.payloadSize |= ((uint16_t)data << 8);
                         if (receivedData.payloadSize > 0) {
 //                            receivedData.payload = (uint8_t*)malloc(receivedData.payloadSize);
-                            if (!receivedData.payload) {
+//                            if (!receivedData.payload) {
                                 // Handle memory allocation failure
-                                receivedData.isStartCommunication = 0; // Reset communication
-                                return;
-                            }
+//                                receivedData.isStartCommunication = 0; // Reset communication
+//                                return;
+//                            }
                         }
                         break;
                     default:
@@ -326,6 +340,7 @@ void __interrupt() mainISR(void) {
             }
         }
     }
+    
 }
 
 void setupOpticalSignalDecoding(void)
@@ -349,8 +364,8 @@ void setupOpticalSignalDecoding(void)
     LATAbits.LATA3 = 0;
     
     // APDS-9960 Setup
-//    I2C_Init();
-//    ColourSensor_Enable();
+    I2C_Init();
+    ColourSensor_Enable();
 }
 
 // Enable Interrupts

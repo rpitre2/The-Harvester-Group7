@@ -72,7 +72,7 @@ uint8_t I2C_WriteByte(uint8_t address, uint8_t reg, uint8_t data)
     I2C_Start();
 //    __delay_ms(1);
     
-    I2C_Write(address << 1);
+    I2C_Write((uint8_t)(address << 1));
     if(!I2C_ACK_Status())
     {
         ack = 0;
@@ -106,7 +106,7 @@ uint8_t I2C_ReadByte(uint8_t address, uint8_t reg)
     I2C_Start();
 //    __delay_ms(1);
     
-    I2C_Write(address << 1);
+    I2C_Write((uint8_t)(address << 1));
     if(!I2C_ACK_Status())
     {
         ack = 0;
@@ -123,7 +123,7 @@ uint8_t I2C_ReadByte(uint8_t address, uint8_t reg)
     I2C_RepeatedStart();
 //    __delay_ms(1);
     
-    I2C_Write((address << 1) | 0x01);
+    I2C_Write((uint8_t)((address << 1) | 0x01));
     if(!I2C_ACK_Status())
     {
         ack = 0;

@@ -12,10 +12,10 @@
 //
 //#define EnablePeripheralInterrupt() (INTCONbits.PEIE = 1)
 
-void OSD_Read_Colours(void)
+void OSD_Process_Colours(ColourReading read)
 {    
-    ColourSensor_Enable();
-    ColourReading read = ColourSensor_ReadColours();
+//    ColourSensor_Enable();
+//    ColourReading read = ColourSensor_ReadColours();
 
     if(read.red_channel > read.green_channel && read.red_channel > read.blue_channel)
     {
