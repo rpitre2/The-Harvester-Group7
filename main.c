@@ -50,6 +50,7 @@
 #include "optical_signal.h"
 #include "i2c.h"
 #include "colour_sensor.h"
+#include <string.h>
 //#include "movement.h"
 
 #define _XTAL_FREQ 32000000
@@ -109,6 +110,7 @@ uint8_t txBuffer[TX_BUFFER_SIZE]; // Transmission buffer
 uint8_t txHead = 0; // Index for adding data
 uint8_t txTail = 0; // Index for transmitting data
 uint8_t txCount = 0; // Number of bytes in the buffer
+uint8_t turnFactor = 0;
 
 void movementControl(uint16_t y_stick, uint16_t x_stick);
 
@@ -176,6 +178,8 @@ void disableProcessingStatus(void);
 ////////////////////// Ore Processing Status ///////////////////
 
 void main(void) {
+    __delay_ms(100);
+    
     initializeUARTBaud115200();
     
     setupUART();
@@ -272,8 +276,15 @@ void main(void) {
             //setLaserScope(0x01);
             setLaserScope(0x00);
         }
-
-        //movementControl(a.rightJoystickY, a.leftJoystickX);
+        
+        if (a.switchC == VALUE_2000) {
+            shootLaserDamage();
+        }
+        else {
+            setLaserScope(0x00);
+        }
+        
+        movementControl(a.rightJoystickY, a.leftJoystickX);
         
         // Normalize dial 1000-2000 range to 62-124
         uint8_t verticalLaserPosition = (uint8_t)(0x3E + ((float)(0x7D0  - a.potentiometerVRB) / (0x7D0 - 0x3E8 )) * (0x7C - 0x3E));
@@ -813,13 +824,13 @@ void movementControl(uint16_t y_stick, uint16_t x_stick){
     uint8_t motorBPWM = 0;
     
     // Handle Forward/Reverse Movement based on joystick input
-    if (y_stick < 1480) {
+    if (y_stick < 1480 && (x_stick > 1350 && x_stick < 1650)) {
         // Reverse (PWM increases as joystick value decreases)
         motorADirection = 1;   // Reverse
         motorBDirection = 2;   // Reverse
         motorAPWM = (uint8_t)(100 - (y_stick - 1000) / 4.8); // PWM increases as joystick value decreases
         motorBPWM = (uint8_t)(100 - (y_stick - 1000) / 4.8); // PWM increases as joystick value decreases
-    } else if (y_stick > 1520) {
+    } else if (y_stick > 1520 && (x_stick > 1450 && x_stick < 1550)) {
         // Forward (PWM increases as joystick value increases)
         motorADirection = 2;   // Forward
         motorBDirection = 1;   // Forward
@@ -827,53 +838,69 @@ void movementControl(uint16_t y_stick, uint16_t x_stick){
         motorBPWM = (uint8_t)((y_stick - 1520) / 4.8); // PWM increases as joystick value increases
     }
     
-    uint8_t turnFactor = 0;
-    if ((y_stick > 1400 && y_stick < 1600) && (x_stick > 1400 && x_stick < 1600)){
+    if (x_stick < 1450) {
+        // Left turn (PWM decreases based on proximity to 1000)
+        turnFactor = (uint8_t)((1450 - x_stick) / 4.5);  // Calculate turn factor (closer to 1000 = stronger left turn)
+         // Apply turning if joystick is in forward or reverse movement
+        if (y_stick < 1480){// || y_stick > 1520) {
+            motorADirection = 1;   // Reverse
+            motorBDirection = 2;   // Reverse
+            motorAPWM = 200;//turnFactor;  // Slow down motor A (left side)
+            motorBPWM = 0;//turnFactor;
+           // motorAPWM -= turnFactor;  // Slow down motor A (left side)
+           // motorBPWM += turnFactor;  // Speed up motor B (right side)
+        } else if (y_stick > 1520){
+            motorADirection = 2;   // Reverse
+            motorBDirection = 1;   // Reverse
+            motorAPWM = 100;//turnFactor;  // Slow down motor A (left side)
+            motorBPWM = 0;//turnFactor;
+        }else {
+            motorADirection = 2;  // Reverse
+            motorBDirection = 2;  // Forward
+            motorAPWM += turnFactor;  // Slow down motor A (left side)
+            motorBPWM += turnFactor;  // Speed up motor B (right side)
+        }
+    } else if (x_stick > 1550) {
+        // Right turn (PWM decreases based on proximity to 2000)
+        turnFactor = (uint8_t)((x_stick - 1550) / 4.5);  // Calculate turn factor (closer to 2000 = stronger right turn)
+        if (y_stick < 1480){// || y_stick > 1520) {
+            motorADirection = 1;   // Reverse
+            motorBDirection = 2;   // Reverse
+            motorAPWM = 0;//turnFactor;  // Slow down motor A (left side)
+            motorBPWM = 200;//turnFactor;
+           // motorAPWM -= turnFactor;  // Slow down motor A (left side)
+           // motorBPWM += turnFactor;  // Speed up motor B (right side)
+        } else if (y_stick > 1520){
+            motorADirection = 2;   // Reverse
+            motorBDirection = 1;   // Reverse
+            motorAPWM = 0;//turnFactor;  // Slow down motor A (left side)
+            motorBPWM = 100;//turnFactor;
+        }else {
+            motorADirection = 1;  // Reverse
+            motorBDirection = 1;  // Forward
+            motorAPWM += turnFactor;  // Slow down motor A (left side)
+            motorBPWM += turnFactor;  // Speed up motor B (right side)
+
+        }
+    }
+
+    if (motorAPWM < 10){
+        motorAPWM = 10;
+    } else if (motorAPWM > 100){
+        motorAPWM = 100;
+    }
+    if (motorBPWM < 10){
+        motorBPWM = 10;
+    } else if (motorBPWM > 100){
+        motorBPWM = 100;
+    }
+    
+    if ((y_stick > 1400 && y_stick < 1600) && (x_stick > 1450 && x_stick < 1550)){
         motorADirection = 0; // Default to brake
         motorBDirection = 0; // Default to brake
         motorAPWM = 0;       // Default PWM
         motorBPWM = 0;       // Default PWM
     }
-    else if (x_stick < 1450) {
-        // Left turn (PWM decreases based on proximity to 1000)
-        turnFactor = (uint8_t)((1450 - x_stick) / 4.5);  // Calculate turn factor (closer to 1000 = stronger left turn)
-         // Apply turning if joystick is in forward or reverse movement
-        if (y_stick < 1480 || y_stick > 1520) {
-            motorAPWM -= turnFactor/2;  // Slow down motor A (left side)
-            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
-        } else {
-            motorADirection = 2;  // Reverse
-            motorBDirection = 1;  // Forward
-            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
-            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
-        }
-    } else if (x_stick > 1550) {
-        // Right turn (PWM decreases based on proximity to 2000)
-        turnFactor = (uint8_t)((x_stick - 1550) / 4.5);  // Calculate turn factor (closer to 2000 = stronger right turn)
-        if (y_stick < 1480 || y_stick > 1520) {
-            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
-            motorBPWM -= turnFactor/2;  // Speed up motor B (right side)
-        } else {
-            motorADirection = 1;  // Reverse
-            motorBDirection = 2;  // Forward
-            motorAPWM += turnFactor/2;  // Slow down motor A (left side)
-            motorBPWM += turnFactor/2;  // Speed up motor B (right side)
-
-        }
-    }
-
-    if (motorAPWM < 25){
-        motorAPWM = 25;
-    } else if (motorAPWM > 100){
-        motorAPWM = 100;
-    }
-    if (motorBPWM < 25){
-        motorBPWM = 25;
-    } else if (motorBPWM > 100){
-        motorBPWM = 100;
-    }
-    
-
 
     // Send the motor settings
     setMotorSettings(motorADirection, motorAPWM, motorBDirection, motorBPWM);
